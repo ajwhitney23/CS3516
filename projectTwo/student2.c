@@ -71,23 +71,27 @@ struct pkt ackPTK;
  */
 void A_output(struct msg message)
 {
+
     struct pkt send; //packet to be sent
-    send.acknum = !(prevPKT.acknum);
+    send.acknum = 0;
     send.seqnum = !(prevPKT.seqnum);
-    for (int i = 0; i < MESSAGE_LENGTH; i++){
+    for (int i = 0; i < MESSAGE_LENGTH; i++)
+    {
         send.payload[i] = message.data[i];
     }
     send.checksum = createChecksum(send);
 
-    //check if ack is the same... 
-    if(ackPTK.acknum == send.seqnum){
+    //check if ack is the same...
+    if (ackPTK.acknum == send.seqnum)
+    {
         return;
     }
 
     //store
     prevPKT.seqnum = send.seqnum;
     prevPKT.acknum = send.acknum;
-    for(int i = 0; i < MESSAGE_LENGTH; i++){
+    for (int i = 0; i < MESSAGE_LENGTH; i++)
+    {
         prevPKT.payload[i] = message.data[i];
     }
     prevPKT.checksum = send.checksum;
@@ -95,7 +99,6 @@ void A_output(struct msg message)
     tolayer3(AEntity, send);
     startTimer(AEntity, 1000);
 }
-
 
 /* 
  * A_input(packet), where packet is a structure of type pkt. This routine 
@@ -109,12 +112,14 @@ void A_output(struct msg message)
  */
 void A_input(struct pkt packet)
 {
+    /*
     //check if acknum is correct, check packet corruption
         //stop timer
         //set ackPKT seq and ack num to packet's
         //flip seq
-    if((checkPacket(packet) == 0) && (packet.acknum == prevPKT.acknum))
+    if((checkPacket(packet) == 0) && (packet.acknum == prevPKT.seqnum))
     {
+        stopTimer(AEntity);
         ackPTK.acknum = packet.acknum;
         ackPTK.seqnum = packet.seqnum;
         for(int i = 0; i < MESSAGE_LENGTH; i++)
@@ -122,7 +127,6 @@ void A_input(struct pkt packet)
             ackPTK.payload[i] = packet.payload[i];
         }
         ackPTK.checksum = createChecksum(ackPTK);
-        stopTimer(AEntity);
     }
     //else
         //was error
@@ -133,6 +137,7 @@ void A_input(struct pkt packet)
         tolayer3(AEntity, prevPKT);
         startTimer(AEntity, 1000);
     }
+    */
 }
 
 /*
@@ -143,7 +148,7 @@ void A_input(struct pkt packet)
  */
 void A_timerinterrupt()
 {
-    if(prevPKT.seqnum != ackPTK.acknum)
+    if (prevPKT.seqnum != ackPTK.acknum)
     {
         //trace print resending, and time out
         tolayer3(AEntity, prevPKT);
@@ -169,8 +174,8 @@ void A_init()
     ackPTK.checksum = 0;
     for (int i = 0; i < MESSAGE_LENGTH; i++)
     {
-        prevPKT.payload[i]=0;
-        ackPTK.payload[i]=0;
+        prevPKT.payload[i] = 0;
+        ackPTK.payload[i] = 0;
     }
 }
 
@@ -191,19 +196,19 @@ void B_output(struct msg message)
 void B_input(struct pkt packet)
 {
     struct pkt resend;
-    //if isn't corrupted & correct seqnum 
-    if((checkPacket(packet) == 0) && packet.seqnum == correctSeqNum)
+    //if isn't corrupted & correct seqnum
+    if ((checkPacket(packet) == 0) && packet.seqnum == correctSeqNum)
     {
-        struct pkt reply; //for layer3 reply
+        struct pkt reply;   //for layer3 reply
         struct msg sendMSG; //for layer5 send
 
         correctSeqNum = !correctSeqNum; //flip correct seq num
-        correctPacket = 1; //notify that correct packet was found
+        correctPacket = 1;              //notify that correct packet was found
         //set reply seqnum and acknum to packet seqnum
-        reply.seqnum = packet.seqnum; 
+        reply.seqnum = packet.seqnum;
         reply.acknum = packet.seqnum;
         //copy packet payload into response
-        for(int i = 0; i < MESSAGE_LENGTH; i++)
+        for (int i = 0; i < MESSAGE_LENGTH; i++)
         {
             reply.payload[i] = packet.payload[i];
         }
@@ -212,30 +217,24 @@ void B_input(struct pkt packet)
         //send reply to layer3
         tolayer3(BEntity, reply);
         //copy packet payload into message for layer 5
-        for(int i = 0; i < MESSAGE_LENGTH; i++)
+        for (int i = 0; i < MESSAGE_LENGTH; i++)
         {
             sendMSG.data[i] = packet.payload[i];
         }
-        //add 0 to end of message (to ensure terminates?)
+        //add 0 to end of message
         sendMSG.data[20] = 0;
         //send message to layer5
         tolayer5(BEntity, sendMSG);
         resend = reply;
-
     }
 
-    //else
-    //resend?
-    //
-    else { //wrong seq num or packet corrupt
-    /*
-        if(correctPacket == 1) {
+    else
+    { //wrong seq num or packet corrupt
+
+        if (correctPacket == 1)
+        {
             tolayer3(BEntity, resend);
         }
-        else {
-            //packet was corrupted?
-        }
-    */
     }
 }
 
@@ -268,9 +267,9 @@ void B_init()
 int createChecksum(struct pkt packet)
 {
     int a = 0;
-    for(int i = 0; i < MESSAGE_LENGTH; i++)
+    for (int i = 0; i < MESSAGE_LENGTH; i++)
     {
-        a = (a + (i * ((int) (packet.payload[i]))));
+        a = (a + (i * ((int)(packet.payload[i]))));
     }
     return a;
 }
@@ -281,10 +280,12 @@ int checkPacket(struct pkt packet)
 {
     int check = createChecksum(packet);
 
-    if(check != packet.checksum){
-        return 1; 
+    if (check != packet.checksum)
+    {
+        return 1;
     }
-    else {
+    else
+    {
         return 0;
     }
 }
