@@ -1,6 +1,9 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "project2.h"
+#include <crypt.h>
+#include <unistd.h>
 
 /* ***************************************************************************
  ALTERNATING BIT AND GO-BACK-N NETWORK EMULATOR: VERSION 1.1  J.F.Kurose
@@ -16,6 +19,21 @@
 
    Compile as gcc -g project2.c student2.c -o p2
 **********************************************************************/
+//prototypes
+int calcChecksum(struct pkt packet);
+int checkChecksum(struct pkt packet);
+
+//for loop counter; ccc servers do not allow it to be created in for loop
+int i;
+
+//packets
+struct pkt prevPKT; //stores the previous packet (for restranmission and setting next packet seqnum)
+struct pkt prevACK; //stores the previous ack packet
+struct pkt resend;  //stores b side for resend if packet is corrupted...
+
+//B-side variables
+int seqNum;    //used for the expected seqnum... will alt between 0 and 1
+int hasResend; //used to make sure pkt resend has been filled
 
 /********* STUDENTS WRITE THE NEXT SEVEN ROUTINES *********/
 /* 
@@ -24,43 +42,6 @@
  * and would be called by other procedures in the operating system.  
  * All these routines are in layer 4.
  */
-/*
-Flow:
-A sends pkt0
-B rcv pkt0
-B sends ack0
-A rcv ack0
-A send pkt1
-B rcv pkt1
-B send ack1
-A rcv ack1
-... and loop
-A must be able to timeout, resend;    B detect when timeout happens
-
-ORDER:
-a_init
-b_init
-a_output
-b_input
-a_input
-...
-
-*/
-
-//prototypes
-int createChecksum(struct pkt packet);
-int checkPacket(struct pkt packet);
-
-/* Global variables to be used for the project */
-//A variables
-
-//B variables
-int correctSeqNum;
-int correctPacket;
-
-//Global Variables
-struct pkt prevPKT;
-struct pkt ackPTK;
 
 /* 
  * A_output(message), where message is a structure of type msg, containing 
@@ -72,32 +53,36 @@ struct pkt ackPTK;
 void A_output(struct msg message)
 {
 
-    struct pkt send; //packet to be sent
-    send.acknum = 0;
-    send.seqnum = !(prevPKT.seqnum);
-    for (int i = 0; i < MESSAGE_LENGTH; i++)
+    struct pkt toSend;                 //create packet to send
+    toSend.acknum = 0;                 //set NULL?; 0 for checksum calculation
+    toSend.seqnum = !(prevPKT.seqnum); //set seqnum to opposite of previous packet sent out
+    for (i = 0; i < MESSAGE_LENGTH; i++)
     {
-        send.payload[i] = message.data[i];
+        toSend.payload[i] = message.data[i]; //put message into payload
     }
-    send.checksum = createChecksum(send);
+    toSend.checksum = calcChecksum(toSend); //calculate checksum
 
-    //check if ack is the same...
-    if (ackPTK.acknum == send.seqnum)
+    //store the packet created into the prevPKT pkt
+    prevPKT.seqnum = toSend.seqnum;
+    prevPKT.acknum = toSend.acknum;
+    for (i = 0; i < MESSAGE_LENGTH; i++)
     {
-        return;
+        prevPKT.payload[i] = toSend.payload[i];
     }
+    prevPKT.checksum = toSend.checksum;
 
-    //store
-    prevPKT.seqnum = send.seqnum;
-    prevPKT.acknum = send.acknum;
-    for (int i = 0; i < MESSAGE_LENGTH; i++)
-    {
-        prevPKT.payload[i] = message.data[i];
-    }
-    prevPKT.checksum = send.checksum;
-
-    tolayer3(AEntity, send);
+    //send the packet finally & start timer
+    tolayer3(AEntity, toSend);
     startTimer(AEntity, 1000);
+}
+
+/*
+ * Just like A_output, but residing on the B side.  USED only when the 
+ * implementation is bi-directional.
+ */
+void B_output(struct msg message)
+{
+    //not used in this project
 }
 
 /* 
@@ -105,39 +90,29 @@ void A_output(struct msg message)
  * will be called whenever a packet sent from the B-side (i.e., as a result 
  * of a tolayer3() being done by a B-side procedure) arrives at the A-side. 
  * packet is the (possibly corrupted) packet sent from the B-side.
- * 
- * if((isCorruptedPacket(packet) == FALSE) && (strncmp(packet.payload, "ACK", strlen("ACK")) == 0) &&
- *  (packet.acknum == lastPacket.seqnum)){
-    if(TraceLevel >= 4)	printf("AEntity got a valid expected ACK!\n");
  */
 void A_input(struct pkt packet)
 {
-    /*
-    //check if acknum is correct, check packet corruption
-        //stop timer
-        //set ackPKT seq and ack num to packet's
-        //flip seq
-    if((checkPacket(packet) == 0) && (packet.acknum == prevPKT.seqnum))
+    //make sure packet is not corrupt and the acknum is correct (should be that of last packet A sent out's seqnum)
+    if ((checkChecksum(packet) == 1) && (packet.acknum == prevPKT.seqnum))
     {
-        stopTimer(AEntity);
-        ackPTK.acknum = packet.acknum;
-        ackPTK.seqnum = packet.seqnum;
-        for(int i = 0; i < MESSAGE_LENGTH; i++)
+        stopTimer(AEntity); //stop timer to prevent timeout
+        //now that packet has passed check, store in the last acked packet struct
+        prevACK.acknum = packet.acknum;
+        prevACK.seqnum = packet.seqnum;
+        for (i = 0; i < MESSAGE_LENGTH; i++)
         {
-            ackPTK.payload[i] = packet.payload[i];
+            prevACK.payload[i] = packet.payload[i];
         }
-        ackPTK.checksum = createChecksum(ackPTK);
+        prevACK.checksum = calcChecksum(prevACK);
     }
-    //else
-        //was error
-        //send to layer3 again
-        //start timer
-    else{
-        //print was error, resending
+
+    else
+    {
+        //resend last A packet since acknum is not correct
         tolayer3(AEntity, prevPKT);
         startTimer(AEntity, 1000);
     }
-    */
 }
 
 /*
@@ -148,15 +123,11 @@ void A_input(struct pkt packet)
  */
 void A_timerinterrupt()
 {
-    if (prevPKT.seqnum != ackPTK.acknum)
+    //resend packet, but ensure it is the right one
+    if (prevPKT.seqnum != prevACK.acknum) //see if packet's seqnum is opposite of last ACK
     {
-        //trace print resending, and time out
         tolayer3(AEntity, prevPKT);
         startTimer(AEntity, 1000);
-    }
-    else
-    {
-        //packet was acknowledged
     }
 }
 
@@ -164,28 +135,22 @@ void A_timerinterrupt()
 /* entity A routines are called. You can use it to do any initialization */
 void A_init()
 {
-    //initialize last received back and last ack packet
-    prevPKT.seqnum = 1;
-    prevPKT.acknum = 0;
-    prevPKT.checksum = 0;
-    //set ackPKT seq and ack to invalid 0 to ensure first packet goes through...
-    ackPTK.seqnum = -1;
-    ackPTK.acknum = -1;
-    ackPTK.checksum = 0;
-    for (int i = 0; i < MESSAGE_LENGTH; i++)
+    prevPKT.seqnum = 1;                  //initialize so first seqnum is 0
+    prevPKT.acknum = 0;                  //will be overwritten
+    prevPKT.checksum = 0;                //will be overwritten
+    prevACK.seqnum = -1;                 //will be overwritten
+    prevACK.acknum = -1;                 //will be overwritten
+    prevACK.checksum = 0;                //will be overwritten
+    for (i = 0; i < MESSAGE_LENGTH; i++) //will be overwritten
     {
         prevPKT.payload[i] = 0;
-        ackPTK.payload[i] = 0;
+        prevACK.payload[i] = 0;
     }
 }
 
 /* 
  * Note that with simplex transfer from A-to-B, there is no routine  B_output() 
  */
-void B_output(struct msg message)
-{
-    //not needed
-}
 
 /*
  * B_input(packet),where packet is a structure of type pkt. This routine 
@@ -195,46 +160,50 @@ void B_output(struct msg message)
  */
 void B_input(struct pkt packet)
 {
-    struct pkt resend;
-    //if isn't corrupted & correct seqnum
-    if ((checkPacket(packet) == 0) && packet.seqnum == correctSeqNum)
-    {
-        struct pkt reply;   //for layer3 reply
-        struct msg sendMSG; //for layer5 send
+    //create a packet and message for response
+    struct pkt replyPKT;
+    struct msg replyMSG;
 
-        correctSeqNum = !correctSeqNum; //flip correct seq num
-        correctPacket = 1;              //notify that correct packet was found
-        //set reply seqnum and acknum to packet seqnum
-        reply.seqnum = packet.seqnum;
-        reply.acknum = packet.seqnum;
-        //copy packet payload into response
-        for (int i = 0; i < MESSAGE_LENGTH; i++)
+    //ensure packet is not corrupt and it is the correct seqnum (arrived on time, in order)
+    if ((checkChecksum(packet) == 1) && packet.seqnum == seqNum)
+    {
+        seqNum = !seqNum; //passed check so flip seqnum
+
+        //first create reply packet acknum and seqnum to that of incoming packet seqnum
+        replyPKT.acknum = packet.seqnum;
+        replyPKT.seqnum = packet.seqnum;
+
+        //create reply packet payload and message data
+        for (i = 0; i < MESSAGE_LENGTH; i++)
         {
-            reply.payload[i] = packet.payload[i];
+            replyPKT.payload[i] = packet.payload[i];
+            replyMSG.data[i] = packet.payload[i];
         }
-        //calculate reply checksum
-        reply.checksum = createChecksum(reply);
-        //send reply to layer3
-        tolayer3(BEntity, reply);
-        //copy packet payload into message for layer 5
-        for (int i = 0; i < MESSAGE_LENGTH; i++)
+        replyPKT.checksum = calcChecksum(replyPKT);
+
+        //send reply packet and message packet
+        tolayer3(BEntity, replyPKT);
+        tolayer5(BEntity, replyMSG);
+
+        //store if next seqnum is corrupted to resend.
+        resend.seqnum = packet.seqnum;
+        resend.acknum = packet.acknum;
+        resend.checksum = packet.checksum;
+        for (i = 0; i < MESSAGE_LENGTH; i++)
         {
-            sendMSG.data[i] = packet.payload[i];
+            resend.payload[i] = packet.payload[i];
         }
-        //add 0 to end of message
-        sendMSG.data[20] = 0;
-        //send message to layer5
-        tolayer5(BEntity, sendMSG);
-        resend = reply;
+
+        hasResend = 1; //store that there is a resend packet available
     }
 
     else
-    { //wrong seq num or packet corrupt
-
-        if (correctPacket == 1)
+    {
+        if (hasResend) //ensure resend has been created
         {
             tolayer3(BEntity, resend);
         }
+        //else let timerA timeout....
     }
 }
 
@@ -246,7 +215,7 @@ void B_input(struct pkt packet)
  */
 void B_timerinterrupt()
 {
-    //not needed
+    //not used for this assignment...
 }
 
 /* 
@@ -255,37 +224,43 @@ void B_timerinterrupt()
  */
 void B_init()
 {
-    //initialize anticipated seqnum opposite of prevPKT.seqnum
-    correctSeqNum = 0;
-    correctPacket = 0;
-}
-
-/*
-*   This will be called to create the checksum
-*/
-//still need to do
-int createChecksum(struct pkt packet)
-{
-    int a = 0;
-    for (int i = 0; i < MESSAGE_LENGTH; i++)
+    seqNum = 0;          //first seqnum should be 0
+    hasResend = 0;       //no resend has been created yet
+    resend.acknum = 0;   //to be overwritten
+    resend.seqnum = 0;   //to be overwritten
+    resend.checksum = 0; //to be overwritten
+    for (i = 0; i < MESSAGE_LENGTH; i++)
     {
-        a = (a + (i * ((int)(packet.payload[i]))));
+        resend.payload[i] = 0; //to be overwritten
     }
-    return a;
 }
-/*
- * This will be called the check the check sum
- */
-int checkPacket(struct pkt packet)
-{
-    int check = createChecksum(packet);
 
-    if (check != packet.checksum)
+int calcChecksum(struct pkt packet)
+{
+    int res = 0; //initialize result
+
+    //use crypt to create string to be converted to random int
+    char *cryptRes = crypt(packet.payload, "aa");
+    //create an integer as a result of the crypt
+    for (i = 0; i < strlen(cryptRes); i++)
     {
-        return 1;
+        res = res + (int)cryptRes[i];
+    }
+    //add seqnum and acknum to result of ack
+    res = res + packet.seqnum + packet.acknum;
+    //return result
+    return res;
+}
+
+int checkChecksum(struct pkt packet)
+{
+    int check = calcChecksum(packet); //calc checksum of packet
+    if (check == packet.checksum)     //if not same either acknun, seqnum, payload, or checknum is wrong in packet
+    {
+        return 1; //return it is not corrupt
     }
     else
     {
-        return 0;
+        return 0; //return it is corrupt
     }
 }

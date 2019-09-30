@@ -1,7 +1,7 @@
-all: project
+all: p2
 
-project: project2.c
-	gcc project2.c project2.h student2.c -o project
+p2: student2.c project2.c
+	gcc -g project2.c student2.c -o p2 -lcrypt
 
 clean:
-	rm -f *.o project
+	rm -f *.o p2
