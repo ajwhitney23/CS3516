@@ -6,18 +6,17 @@ extern int TraceLevel;
 struct distance_table {
   int costs[MAX_NODES][MAX_NODES];
 };
-struct distance_table dt0;
-struct NeighborCosts   *neighbor0;
+struct distance_table dt1;
+struct NeighborCosts   *neighbor1;
 
 /* students to write the following two routines, and maybe some others */
 
-void rtinit0() {
-    neighbor0 = getNeighborCosts(0);
-    
+void rtinit1() {
+    neighbor1 = getNeighborCosts(1);
 }
 
 
-void rtupdate0( struct RoutePacket *rcvdpkt ) {
+void rtupdate1( struct RoutePacket *rcvdpkt ) {
 
 }
 
@@ -38,7 +37,7 @@ void rtupdate0( struct RoutePacket *rcvdpkt ) {
 //                 constantly updated as the node gets new
 //                 messages from other nodes.
 /////////////////////////////////////////////////////////////////////
-void printdt0( int MyNodeNumber, struct NeighborCosts *neighbor, 
+void printdt1( int MyNodeNumber, struct NeighborCosts *neighbor, 
 		struct distance_table *dtptr ) {
     int       i, j;
     int       TotalNodes = neighbor->NodesInNetwork;     // Total nodes in network
@@ -71,5 +70,5 @@ void printdt0( int MyNodeNumber, struct NeighborCosts *neighbor,
         }
     }
     printf("\n");
-}    // End of printdt0
+}    // End of printdt1
 
